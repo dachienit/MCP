@@ -27,6 +27,8 @@ const SapLoginSchema = z.object({
     url: z.string().describe("The base URL of the SAP system"),
     username: z.string().describe("SAP username"),
     password: z.string().describe("SAP password"),
+    client: z.string().optional().describe("SAP Client (e.g., 100)"),
+    language: z.string().optional().describe("Login Language (e.g., EN)"),
     proxy: z.string().optional().describe("Proxy URL if required"),
 });
 
@@ -52,6 +54,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                             type: "string",
                             description: "SAP password",
                         },
+                        client: {
+                            type: "string",
+                            description: "SAP Client (e.g., 100)",
+                        },
+                        language: {
+                            type: "string",
+                            description: "Login Language (e.g., EN)",
+                        },
                         proxy: {
                             type: "string",
                             description: "Proxy URL if required",
@@ -67,17 +77,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (request.params.name === "sap_login") {
         try {
-            const { url, username, password, proxy } = SapLoginSchema.parse(
+            const { url, username, password, client, language, proxy } = SapLoginSchema.parse(
                 request.params.arguments
             );
 
             const agent = proxy ? new HttpsProxyAgent(proxy) : undefined;
+
+            const params: Record<string, string> = {};
+            if (client) params["sap-client"] = client;
+            if (language) params["sap-language"] = language;
 
             const axiosConfig = {
                 auth: {
                     username,
                     password,
                 },
+                params,
                 httpsAgent: agent,
                 validateStatus: (status: number) => status < 500,
             };
