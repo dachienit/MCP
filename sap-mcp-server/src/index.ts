@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
@@ -124,32 +125,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
-    const app = express();
-    app.use(cors());
+    const port = process.env.PORT;
 
-    let transport: SSEServerTransport;
+    if (port) {
+        // Run as HTTP/SSE Server (BTP mode if PORT env defined)
+        const app = express();
+        app.use(cors());
 
-    app.get("/sse", async (req, res) => {
-        console.log("Received new SSE connection");
-        transport = new SSEServerTransport("/message", res);
+        let transport: SSEServerTransport;
+
+        app.get("/sse", async (req, res) => {
+            console.log("Received new SSE connection");
+            transport = new SSEServerTransport("/message", res);
+            await server.connect(transport);
+        });
+
+        app.post("/message", async (req, res) => {
+            console.log("Received message");
+            if (!transport) {
+                res.sendStatus(400);
+                return;
+            }
+            await transport.handlePostMessage(req, res);
+        });
+
+        app.listen(port, () => {
+            console.log(`SAP MCP Server running on port ${port} (HTTP/SSE mode)`);
+            console.log(`SSE endpoint: http://localhost:${port}/sse`);
+            console.log(`Message endpoint: http://localhost:${port}/message`);
+        });
+    } else {
+        // Run as Stdio Server (Local Development mode)
+        const transport = new StdioServerTransport();
         await server.connect(transport);
-    });
-
-    app.post("/message", async (req, res) => {
-        console.log("Received message");
-        if (!transport) {
-            res.sendStatus(400);
-            return;
-        }
-        await transport.handlePostMessage(req, res);
-    });
-
-    const port = process.env.PORT || 3000;
-    app.listen(port, () => {
-        console.log(`SAP MCP Server running on port ${port}`);
-        console.log(`SSE endpoint: http://localhost:${port}/sse`);
-        console.log(`Message endpoint: http://localhost:${port}/message`);
-    });
+        console.error("SAP MCP Server running on stdio");
+    }
 }
 
 main().catch((error) => {
